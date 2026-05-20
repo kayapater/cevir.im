@@ -17,7 +17,8 @@ import {
   Layers,
   Zap,
   Download,
-  FolderOpen
+  FolderOpen,
+  Copy
 } from 'lucide-react';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
@@ -417,6 +418,37 @@ export default function App() {
     newItems.forEach((item) => {
       probeFileMetadataClientSide(item.id, item.file);
     });
+  };
+
+  // Duplicate/Clone a job in the queue to convert to a different format
+  const handleDuplicateItem = (item) => {
+    const newId = 'job-' + Math.random().toString(36).substr(2, 9) + '-' + Date.now();
+    const clonedItem = {
+      ...item,
+      id: newId,
+      status: 'idle',
+      progress: 0,
+      speed: 'N/A',
+      timeRemaining: 'Hazır',
+      elapsedTime: '00:00:00',
+      outputSize: '0 B',
+      logs: [],
+      outputPath: '',
+      nativePath: '',
+      options: { ...item.options }
+    };
+    
+    setQueue(prev => {
+      const idx = prev.findIndex(q => q.id === item.id);
+      if (idx !== -1) {
+        const next = [...prev];
+        next.splice(idx + 1, 0, clonedItem);
+        return next;
+      }
+      return [...prev, clonedItem];
+    });
+    
+    showToast(`"${item.name}" kopyası oluşturuldu. Farklı bir format seçip dönüştürebilirsiniz.`, 'success');
   };
 
   // Probe file details natively using HTML5 APIs (extremely fast!)
@@ -2075,6 +2107,15 @@ export default function App() {
                               <Play size={14} />
                             </button>
                           )}
+
+                          <button 
+                            className="btn-icon" 
+                            title="Kopyasını Oluştur (Farklı Format)"
+                            onClick={() => handleDuplicateItem(item)}
+                            style={{ color: 'var(--accent-purple)' }}
+                          >
+                            <Copy size={14} />
+                          </button>
 
                           <button 
                             className="btn-icon btn-danger" 
