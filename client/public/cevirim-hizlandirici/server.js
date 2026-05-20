@@ -22,6 +22,53 @@ if (!fs.existsSync(outputDir)) {
   fs.mkdirSync(outputDir, { recursive: true });
 }
 
+// Hardware-accelerated GPU encoder auto-detection
+let supportedVideoEncoders = {
+  h264: 'libx264',
+  hevc: 'libx265'
+};
+
+const checkHardwareEncoders = () => {
+  try {
+    const ffmpeg = spawn(ffmpegPath, ['-encoders']);
+    let output = '';
+    
+    ffmpeg.stdout.on('data', (data) => {
+      output += data.toString();
+    });
+    
+    ffmpeg.on('close', () => {
+      // Check H.264
+      if (output.includes('h264_nvenc')) {
+        supportedVideoEncoders.h264 = 'h264_nvenc';
+        console.log('[Sistem] NVIDIA NVENC H.264 donanım hızlandırma aktif!');
+      } else if (output.includes('h264_amf')) {
+        supportedVideoEncoders.h264 = 'h264_amf';
+        console.log('[Sistem] AMD AMF H.264 donanım hızlandırma aktif!');
+      } else if (output.includes('h264_qsv')) {
+        supportedVideoEncoders.h264 = 'h264_qsv';
+        console.log('[Sistem] Intel QSV H.264 donanım hızlandırma aktif!');
+      }
+
+      // Check HEVC (H.265)
+      if (output.includes('hevc_nvenc')) {
+        supportedVideoEncoders.hevc = 'hevc_nvenc';
+        console.log('[Sistem] NVIDIA NVENC HEVC donanım hızlandırma aktif!');
+      } else if (output.includes('hevc_amf')) {
+        supportedVideoEncoders.hevc = 'hevc_amf';
+        console.log('[Sistem] AMD AMF HEVC donanım hızlandırma aktif!');
+      } else if (output.includes('hevc_qsv')) {
+        supportedVideoEncoders.hevc = 'hevc_qsv';
+        console.log('[Sistem] Intel QSV HEVC donanım hızlandırma aktif!');
+      }
+    });
+  } catch (err) {
+    console.error('[Hata] Donanım hızlandırıcı kontrolü başarısız:', err);
+  }
+};
+
+checkHardwareEncoders();
+
 // Configure multer for temporary uploads
 const tempDir = path.join(os.tmpdir(), 'cevirim-temp');
 if (!fs.existsSync(tempDir)) {
@@ -86,9 +133,27 @@ app.post('/api/convert-native', upload.single('file'), (req, res) => {
     if (options.videoCodec === 'copy') {
       args.push('-c:v', 'copy');
     } else if (options.videoCodec === 'h264') {
-      args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', '22');
+      const encoder = supportedVideoEncoders.h264;
+      args.push('-c:v', encoder);
+      if (encoder.includes('nvenc')) {
+        args.push('-preset', 'p4', '-pix_fmt', 'yuv420p');
+      } else if (encoder.includes('amf') || encoder.includes('qsv')) {
+        args.push('-pix_fmt', 'yuv420p');
+      } else {
+        // CPU fallback
+        args.push('-preset', 'medium', '-crf', '22', '-pix_fmt', 'yuv420p');
+      }
     } else if (options.videoCodec === 'hevc') {
-      args.push('-c:v', 'libx265', '-preset', 'medium', '-crf', '25');
+      const encoder = supportedVideoEncoders.hevc;
+      args.push('-c:v', encoder);
+      if (encoder.includes('nvenc')) {
+        args.push('-preset', 'p4', '-pix_fmt', 'yuv420p');
+      } else if (encoder.includes('amf') || encoder.includes('qsv')) {
+        args.push('-pix_fmt', 'yuv420p');
+      } else {
+        // CPU fallback
+        args.push('-preset', 'medium', '-crf', '25', '-pix_fmt', 'yuv420p');
+      }
     } else if (options.videoCodec === 'vp9') {
       args.push('-c:v', 'libvpx-vp9', '-crf', '30', '-b:v', '0');
     } else if (options.videoCodec === 'prores') {

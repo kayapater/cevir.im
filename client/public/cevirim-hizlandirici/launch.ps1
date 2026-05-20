@@ -17,33 +17,53 @@ if ($portActive) {
     Exit
 }
 
-# 1. Portable Node.js kontrolü ve kurulumu
-if (-not (Test-Path $NodeDir)) {
-    Write-Host "[*] Node.js (Portatif) indiriliyor..." -ForegroundColor Yellow
-    $NodeUrl = "https://nodejs.org/dist/v20.11.0/node-v20.11.0-win-x64.zip"
-    Invoke-WebRequest -Uri $NodeUrl -OutFile $NodeZip
-    
-    Write-Host "[*] Node.js kuruluyor..." -ForegroundColor Yellow
-    Expand-Archive -Path $NodeZip -DestinationPath $AppDir
-    Rename-Item -Path (Join-Path $AppDir "node-v20.11.0-win-x64") -NewName "node_portable"
-    Remove-Item $NodeZip -Force
-    Write-Host "[+] Node.js kuruldu." -ForegroundColor Green
+# 1. Global Node.js kontrolü ve kurulumu
+$UseGlobalNode = $false
+$NodeBin = "node"
+$NpmBin = "npm"
+
+$globalNode = Get-Command node -ErrorAction SilentlyContinue
+if ($globalNode) {
+    $nodeVersionStr = node -v
+    if ($nodeVersionStr -match "v(\d+)\.") {
+        $majorVer = [int]$Matches[1]
+        if ($majorVer -ge 16) {
+            $UseGlobalNode = $true
+            Write-Host "[+] Sisteminizde global Node.js tespit edildi ($nodeVersionStr). Portatif Node indirme islemi atlandi." -ForegroundColor Green
+        }
+    }
 }
 
-# Env PATH'e ekle (Sadece bu oturum için)
-$env:PATH = "$NodeDir;" + $env:PATH
-$NodeBin = Join-Path $NodeDir "node.exe"
-$NpmBin = Join-Path $NodeDir "npm.cmd"
+if (-not $UseGlobalNode) {
+    if (-not (Test-Path $NodeDir)) {
+        Write-Host "[*] Node.js (Portatif) indiriliyor..." -ForegroundColor Yellow
+        $NodeUrl = "https://nodejs.org/dist/v20.11.0/node-v20.11.0-win-x64.zip"
+        Invoke-WebRequest -Uri $NodeUrl -OutFile $NodeZip
+        
+        Write-Host "[*] Node.js kuruluyor..." -ForegroundColor Yellow
+        Expand-Archive -Path $NodeZip -DestinationPath $AppDir
+        Rename-Item -Path (Join-Path $AppDir "node-v20.11.0-win-x64") -NewName "node_portable"
+        Remove-Item $NodeZip -Force
+        Write-Host "[+] Node.js kuruldu." -ForegroundColor Green
+    }
+    
+    # Env PATH'e ekle (Sadece bu oturum için)
+    $env:PATH = "$NodeDir;" + $env:PATH
+    $NodeBin = Join-Path $NodeDir "node.exe"
+    $NpmBin = Join-Path $NodeDir "npm.cmd"
+}
 
 # 2. Bağımlılıkların kontrolü ve kurulumu
 $NodeModules = Join-Path $AppDir "node_modules"
-if (-not (Test-Path $NodeModules)) {
-    Write-Host "[*] Bilesenler ve FFmpeg Donanim Hizlandirici yukleniyor..." -ForegroundColor Yellow
+$SystrayDir = Join-Path $NodeModules "systray2"
+
+if (-not (Test-Path $NodeModules) -or -not (Test-Path $SystrayDir)) {
+    Write-Host "[*] Gerekli bilesenler ve FFmpeg donanim hizlandiricisi yukleniyor..." -ForegroundColor Yellow
     Write-Host "    (Bu islem baglantiniza bagli olarak 1-2 dakika surebilir)" -ForegroundColor Gray
     
     $installProc = Start-Process -FilePath $NpmBin -ArgumentList "install" -WorkingDirectory $AppDir -PassThru -NoNewWindow -Wait
     if ($installProc.ExitCode -eq 0) {
-        Write-Host "[+] Bilesenler yuklendi." -ForegroundColor Green
+        Write-Host "[+] Bilesenler basariyla yuklendi." -ForegroundColor Green
     } else {
         Write-Host "[-] Hata: Bilesenler yuklenemedi. Exit: $($installProc.ExitCode)" -ForegroundColor Red
         Exit 1
