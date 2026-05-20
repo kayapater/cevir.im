@@ -1492,10 +1492,15 @@ export default function App() {
             </div>
             <div>
               <h4 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '0.95rem', fontWeight: 'bold' }}>
-                Daha Hızlı Dönüştürme & Donanım Hızlandırma İster misiniz?
+                🚀 10 Kat Hızlı & Donanım Hızlandırmalı Dönüştürme
               </h4>
-              <p style={{ margin: '0.2rem 0 0 0', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
-                Büyük dosyaları saniyeler içinde işlemek ve ProRes/HEVC hızını 10 kat artırmak için tek seferlik hızlandırıcıyı indirin.
+              <p style={{ margin: '0.3rem 0 0 0', color: 'var(--text-secondary)', fontSize: '0.82rem', lineHeight: '1.4' }}>
+                <b>1. ZIP'i İndirin</b> (Yandaki buton) <span style={{ color: 'var(--accent-purple)', margin: '0 0.4rem' }}>➔</span> 
+                <b>2. Klasöre Çıkartın</b> <span style={{ color: 'var(--accent-purple)', margin: '0 0.4rem' }}>➔</span> 
+                <b>3. baslat.bat dosyasına çift tıklayın</b>. 
+                <span style={{ display: 'block', marginTop: '0.2rem', color: 'rgba(255,255,255,0.4)', fontSize: '0.75rem' }}>
+                  *Kurulum tamamen otomatiktir ve bittiğinde konsol kapanıp arka planda gizli çalışır. Tarayıcı hızlandırıcıyı otomatik algılayacaktır.
+                </span>
               </p>
             </div>
           </div>
