@@ -6,6 +6,9 @@ import fs from 'fs';
 import os from 'os';
 import { spawn, exec } from 'child_process';
 import ffmpegPath from 'ffmpeg-static';
+import SysTrayModule from 'systray2';
+
+const SysTray = SysTrayModule.default || SysTrayModule;
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -247,6 +250,71 @@ if (fs.existsSync(distPath)) {
   app.get('/', (req, res) => {
     res.send('Çevirici Static Server: Lütfen client klasöründe "npm run build" çalıştırın.');
   });
+}
+
+// Windows System Tray Integration
+const iconPath = path.join(process.cwd(), 'cevirim.ico');
+let systray = null;
+
+if (fs.existsSync(iconPath)) {
+  try {
+    systray = new SysTray({
+      menu: {
+        icon: fs.readFileSync(iconPath).toString('base64'),
+        title: 'Cevir.im Hızlandırıcı',
+        tooltip: 'Cevir.im Donanım Hızlandırıcı Servisi',
+        items: [
+          {
+            title: 'Cevir.im Hızlandırıcı (Çalışıyor)',
+            tooltip: 'Servis durumu',
+            checked: false,
+            enabled: false
+          },
+          {
+            title: 'Çıktı Klasörünü Aç',
+            tooltip: 'Dönüştürülen dosyaların klasörünü aç',
+            checked: false,
+            enabled: true
+          },
+          {
+            title: 'Servisi Kapat',
+            tooltip: 'Hızlandırıcıyı sonlandırır',
+            checked: false,
+            enabled: true
+          }
+        ]
+      },
+      debug: false,
+      copyDir: true
+    });
+
+    systray.onClick((action) => {
+      if (action.seq_id === 1) {
+        try {
+          let command = '';
+          if (process.platform === 'win32') {
+            command = `explorer.exe "${outputDir}"`;
+          } else if (process.platform === 'darwin') {
+            command = `open "${outputDir}"`;
+          } else {
+            command = `xdg-open "${outputDir}"`;
+          }
+          exec(command);
+        } catch (err) {
+          console.error('Error opening folder from tray:', err);
+        }
+      } else if (action.seq_id === 2) {
+        systray.kill();
+        process.exit(0);
+      }
+    });
+
+    systray.ready(() => {
+      console.log('[Sistem] System tray simgesi başarıyla eklendi.');
+    });
+  } catch (err) {
+    console.error('[Hata] System tray simgesi başlatılamadı:', err);
+  }
 }
 
 app.listen(port, () => {
