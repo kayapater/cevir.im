@@ -1,0 +1,14 @@
+{
+  "name": "cevirici-server",
+  "version": "1.0.0",
+  "description": "Express backend for local ffmpeg/ffprobe interactions",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "cors": "^2.8.5"
+  }
+}
