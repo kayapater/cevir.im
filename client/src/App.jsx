@@ -14,7 +14,10 @@ import {
   XCircle, 
   AlertCircle,
   Sparkles,
-  Layers
+  Layers,
+  Zap,
+  Download,
+  FolderOpen
 } from 'lucide-react';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
@@ -266,6 +269,32 @@ const getFFmpeg = async (onLog, onProgress) => {
 export default function App() {
   // Queue state
   const [queue, setQueue] = useState([]);
+  
+  // Local hardware engine integration state
+  const [localServerStatus, setLocalServerStatus] = useState({ online: false, outputDir: '' });
+  const [useLocalEngine, setUseLocalEngine] = useState(true);
+
+  useEffect(() => {
+    const checkLocalServer = async () => {
+      try {
+        const res = await fetch('http://localhost:5000/api/status');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status === 'online') {
+            setLocalServerStatus({ online: true, outputDir: data.outputDir });
+            return;
+          }
+        }
+      } catch (err) {
+        // Fail silently
+      }
+      setLocalServerStatus({ online: false, outputDir: '' });
+    };
+
+    checkLocalServer();
+    const interval = setInterval(checkLocalServer, 4000);
+    return () => clearInterval(interval);
+  }, []);
   
   // Selected tab in options panel
   const [activeTab, setActiveTab] = useState('video');
@@ -1119,6 +1148,170 @@ export default function App() {
     }
   };
 
+  // Native local server conversion
+  const executeConversionNative = async (item) => {
+    let pollInterval = null;
+    let elapsedTimer = null;
+    let startTime = Date.now();
+
+    try {
+      setQueue(prev => prev.map(q => {
+        if (q.id === item.id) {
+          return { 
+            ...q, 
+            status: 'converting', 
+            progress: 0, 
+            speed: 'Yükleniyor...', 
+            timeRemaining: 'Hazırlanıyor...',
+            logs: ['[Sistem] Dosya yerel hızlandırıcı sunucuya yükleniyor...']
+          };
+        }
+        return q;
+      }));
+
+      // Upload file to local server
+      const formData = new FormData();
+      formData.append('file', item.file);
+      
+      // Determine file type category
+      let type = 'video';
+      if (['mp3', 'wav', 'aac', 'flac', 'ogg', 'm4a', 'opus'].includes(item.options.format)) {
+        type = 'audio';
+      } else if (['webp', 'jpg', 'jpeg', 'png', 'bmp', 'gif', 'ico'].includes(item.options.format)) {
+        type = 'image';
+      } else if (['pdf', 'html'].includes(item.options.format)) {
+        type = 'doc';
+      }
+
+      const conversionOptions = {
+        ...item.options,
+        type: type
+      };
+
+      formData.append('options', JSON.stringify(conversionOptions));
+
+      const response = await fetch('http://localhost:5000/api/convert-native', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error('Yerel sunucu bağlantısı veya dosya yükleme başarısız.');
+      }
+
+      const { jobId } = await response.json();
+
+      setQueue(prev => prev.map(q => {
+        if (q.id === item.id) {
+          return { 
+            ...q, 
+            logs: [...q.logs, `\n[Sistem] Sunucuda donanım hızlandırmalı dönüştürme başlatıldı. Job ID: ${jobId}`]
+          };
+        }
+        return q;
+      }));
+
+      // Track elapsed time locally
+      elapsedTimer = setInterval(() => {
+        const seconds = Math.floor((Date.now() - startTime) / 1000);
+        const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+        const secs = (seconds % 60).toString().padStart(2, '0');
+        setQueue(prev => prev.map(q => {
+          if (q.id === item.id) {
+            return { ...q, elapsedTime: `${mins}:${secs}` };
+          }
+          return q;
+        }));
+      }, 1000);
+
+      // Poll job status
+      pollInterval = setInterval(async () => {
+        try {
+          const res = await fetch(`http://localhost:5000/api/job-status?jobId=${jobId}`);
+          if (!res.ok) return;
+
+          const job = await res.json();
+
+          if (job.status === 'completed') {
+            clearInterval(pollInterval);
+            clearInterval(elapsedTimer);
+            
+            // Format elapsed final
+            const seconds = Math.floor((Date.now() - startTime) / 1000);
+            const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+            const secs = (seconds % 60).toString().padStart(2, '0');
+
+            setQueue(prev => prev.map(q => {
+              if (q.id === item.id) {
+                return {
+                  ...q,
+                  status: 'success',
+                  progress: 100,
+                  speed: job.speed || '1.0x',
+                  outputSize: job.size || 'N/A',
+                  timeRemaining: 'Tamamlandı',
+                  elapsedTime: `${mins}:${secs}`,
+                  nativePath: job.outputPath,
+                  logs: [...q.logs, `\n[Sistem] Dönüştürme tamamlandı. Çıktı klasörüne kaydedildi: ${job.outputPath}`]
+                };
+              }
+              return q;
+            }));
+            showToast(`${item.file.name} başarıyla dönüştürüldü!`, 'success');
+          } else if (job.status === 'error') {
+            clearInterval(pollInterval);
+            clearInterval(elapsedTimer);
+            throw new Error(job.error || 'Dönüştürme hatası.');
+          } else {
+            // Update progress
+            setQueue(prev => prev.map(q => {
+              if (q.id === item.id) {
+                const logsCopy = [...q.logs];
+                const lastLog = logsCopy[logsCopy.length - 1];
+                const newLogMsg = `[Hızlandırıcı] Dönüştürülüyor... %${job.progress} - Hız: ${job.speed} - Tahmini Boyut: ${job.size}`;
+                
+                // Replace or append log
+                if (lastLog && lastLog.startsWith('\n[Hızlandırıcı]')) {
+                  logsCopy[logsCopy.length - 1] = `\n${newLogMsg}`;
+                } else {
+                  logsCopy.push(`\n${newLogMsg}`);
+                }
+
+                return {
+                  ...q,
+                  progress: job.progress || 0,
+                  speed: job.speed || 'N/A',
+                  outputSize: job.size || 'N/A',
+                  timeRemaining: `Dönüştürülüyor...`,
+                  logs: logsCopy
+                };
+              }
+              return q;
+            }));
+          }
+        } catch (pollErr) {
+          console.error('Job polling error:', pollErr);
+        }
+      }, 500);
+
+    } catch (err) {
+      if (pollInterval) clearInterval(pollInterval);
+      if (elapsedTimer) clearInterval(elapsedTimer);
+      setQueue(prev => prev.map(q => {
+        if (q.id === item.id) {
+          return { 
+            ...q, 
+            status: 'error', 
+            timeRemaining: 'Hata', 
+            logs: [...q.logs, `\n[Hata] Yerel işlem hatası: ${err.message}`] 
+          };
+        }
+        return q;
+      }));
+      showToast(`${item.file.name} dönüştürülürken hata: ${err.message}`, 'error');
+    }
+  };
+
   // Abort conversion and clean instance
   const handleCancelConversion = (id) => {
     if (ffmpegInstance) {
@@ -1150,16 +1343,20 @@ export default function App() {
     showToast('Tüm işlemler sıraya alındı.', 'success');
   };
 
-  // Concurrency Scheduler Loop (1 job at a time for WASM browser stability)
+  // Concurrency Scheduler Loop
   useEffect(() => {
     const convertingJobs = queue.filter(q => q.status === 'converting');
     const pendingJobs = queue.filter(q => q.status === 'pending');
 
     if (convertingJobs.length < 1 && pendingJobs.length > 0) {
       const nextJob = pendingJobs[0];
-      executeConversionClientSide(nextJob);
+      if (localServerStatus.online && useLocalEngine) {
+        executeConversionNative(nextJob);
+      } else {
+        executeConversionClientSide(nextJob);
+      }
     }
-  }, [queue]);
+  }, [queue, localServerStatus.online, useLocalEngine]);
 
   // Drag & Drop events
   const [dragActive, setDragActive] = useState(false);
@@ -1217,12 +1414,113 @@ export default function App() {
         </div>
 
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-          <div className="cloudflare-badge">
-            <Sparkles size={14} style={{ color: 'var(--accent-blue)' }} />
-            <span>%100 Güvenli & Tarayıcıda (WASM)</span>
-          </div>
+          {localServerStatus.online ? (
+            <>
+              <div className="cloudflare-badge" style={{
+                background: 'rgba(16, 185, 129, 0.1)',
+                border: '1px solid rgba(16, 185, 129, 0.3)',
+                color: '#10b981',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.4rem 0.8rem',
+                borderRadius: '20px',
+                fontSize: '0.8rem'
+              }}>
+                <span className="pulse-dot" style={{
+                  display: 'inline-block',
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  background: '#10b981',
+                  boxShadow: '0 0 8px #10b981'
+                }} />
+                <span>Yerel Hızlandırıcı: Bağlı</span>
+              </div>
+              <button 
+                onClick={() => setUseLocalEngine(prev => !prev)}
+                style={{
+                  padding: '0.4rem 0.8rem',
+                  fontSize: '0.75rem',
+                  borderRadius: '20px',
+                  color: useLocalEngine ? 'var(--accent-purple)' : 'var(--text-secondary)',
+                  border: useLocalEngine ? '1px solid var(--accent-purple)' : '1px solid rgba(255,255,255,0.1)',
+                  background: useLocalEngine ? 'rgba(139, 92, 246, 0.1)' : 'transparent',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                {useLocalEngine ? '🚀 Yerel Motor Aktif' : '🌐 WASM Modu'}
+              </button>
+            </>
+          ) : (
+            <div className="cloudflare-badge">
+              <Sparkles size={14} style={{ color: 'var(--accent-blue)' }} />
+              <span>Tarayıcı Modu (WASM)</span>
+            </div>
+          )}
         </div>
       </header>
+
+      {/* Local Accelerator Offline Warning Banner */}
+      {!localServerStatus.online && (
+        <div style={{
+          background: 'rgba(139, 92, 246, 0.08)',
+          border: '1px solid rgba(139, 92, 246, 0.2)',
+          borderRadius: '12px',
+          padding: '1rem 1.5rem',
+          marginBottom: '2rem',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '1rem',
+          flexWrap: 'wrap',
+          boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.2)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{
+              background: 'rgba(139, 92, 246, 0.15)',
+              borderRadius: '50%',
+              padding: '0.5rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--accent-purple)'
+            }}>
+              <Zap size={20} />
+            </div>
+            <div>
+              <h4 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '0.95rem', fontWeight: 'bold' }}>
+                Daha Hızlı Dönüştürme & Donanım Hızlandırma İster misiniz?
+              </h4>
+              <p style={{ margin: '0.2rem 0 0 0', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+                Büyük dosyaları saniyeler içinde işlemek ve ProRes/HEVC hızını 10 kat artırmak için tek seferlik hızlandırıcıyı indirin.
+              </p>
+            </div>
+          </div>
+          <a href="/cevirim-hizlandirici-windows.zip" download style={{
+            background: 'linear-gradient(135deg, var(--accent-purple), var(--accent-blue))',
+            color: 'white',
+            padding: '0.6rem 1.2rem',
+            borderRadius: '8px',
+            fontSize: '0.85rem',
+            fontWeight: 'bold',
+            textDecoration: 'none',
+            boxShadow: '0 4px 15px rgba(139, 92, 246, 0.3)',
+            transition: 'transform 0.2s',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.03)'}
+          onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1.0)'}
+          >
+            <Download size={15} />
+            Hızlandırıcıyı İndir (4 KB ZIP)
+          </a>
+        </div>
+      )}
 
       <div className="dashboard-grid">
         <div className="dashboard-column">
@@ -1737,15 +2035,32 @@ export default function App() {
                               <Square size={14} />
                             </button>
                           ) : item.status === 'success' ? (
-                            <a 
-                              href={item.outputPath}
-                              download={`${item.name.substring(0, item.name.lastIndexOf('.')) || item.name}_converted.${item.options.format}`}
-                              className="btn-icon btn-success" 
-                              title="Dosyayı İndir"
-                              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                            >
-                              <ExternalLink size={14} />
-                            </a>
+                            item.nativePath ? (
+                              <button 
+                                onClick={async () => {
+                                  try {
+                                    await fetch('http://localhost:5000/api/open-folder');
+                                  } catch (err) {
+                                    console.error('Klasör açma hatası:', err);
+                                  }
+                                }}
+                                className="btn-icon btn-success" 
+                                title="Çıktı Klasörünü Aç"
+                                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                              >
+                                <FolderOpen size={14} />
+                              </button>
+                            ) : (
+                              <a 
+                                href={item.outputPath}
+                                download={`${item.name.substring(0, item.name.lastIndexOf('.')) || item.name}_converted.${item.options.format}`}
+                                className="btn-icon btn-success" 
+                                title="Dosyayı İndir"
+                                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                              >
+                                <ExternalLink size={14} />
+                              </a>
+                            )
                           ) : (
                             <button 
                               className="btn-icon" 
