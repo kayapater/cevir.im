@@ -34,7 +34,10 @@ if ($globalNode) {
     }
 }
 
-if (-not $UseGlobalNode) {
+if ($UseGlobalNode) {
+    # Resolve absolute path to global node.exe
+    $NodeBin = $globalNode.Source
+} else {
     if (-not (Test-Path $NodeDir)) {
         Write-Host "[*] Node.js (Portatif) indiriliyor..." -ForegroundColor Yellow
         $NodeUrl = "https://nodejs.org/dist/v20.11.0/node-v20.11.0-win-x64.zip"
@@ -61,11 +64,19 @@ if (-not (Test-Path $NodeModules) -or -not (Test-Path $SystrayDir)) {
     Write-Host "[*] Gerekli bilesenler ve FFmpeg donanim hizlandiricisi yukleniyor..." -ForegroundColor Yellow
     Write-Host "    (Bu islem baglantiniza bagli olarak 1-2 dakika surebilir)" -ForegroundColor Gray
     
-    $installProc = Start-Process -FilePath $NpmBin -ArgumentList "install" -WorkingDirectory $AppDir -PassThru -NoNewWindow -Wait
-    if ($installProc.ExitCode -eq 0) {
+    Push-Location $AppDir
+    if ($UseGlobalNode) {
+        npm install
+    } else {
+        & $NpmBin install
+    }
+    $exitCode = $LASTEXITCODE
+    Pop-Location
+
+    if ($exitCode -eq 0) {
         Write-Host "[+] Bilesenler basariyla yuklendi." -ForegroundColor Green
     } else {
-        Write-Host "[-] Hata: Bilesenler yuklenemedi. Exit: $($installProc.ExitCode)" -ForegroundColor Red
+        Write-Host "[-] Hata: Bilesenler yuklenemedi. Exit: $exitCode" -ForegroundColor Red
         Exit 1
     }
 }
