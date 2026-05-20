@@ -815,6 +815,7 @@ export default function App() {
 
   // In-browser conversion using FFmpeg WebAssembly
   const executeConversionClientSide = async (item) => {
+    let tickInterval = null;
     try {
       setQueue(prev => prev.map(q => {
         if (q.id === item.id) {
@@ -858,8 +859,44 @@ export default function App() {
       };
 
       updateLogs('FFmpeg motoru yükleniyor (CDN aracılığıyla)...\n');
+
+      let lastSpeed = 'N/A';
+      let lastSize = '0 B';
+
       const ffmpeg = await getFFmpeg((log) => {
-        updateLogs(log.message + '\n');
+        const msg = log.message;
+        updateLogs(msg + '\n');
+
+        // Extract speed (e.g. speed= 1.25x or speed=2.5x)
+        const speedMatch = msg.match(/speed=\s*([\d\.]+)x/);
+        if (speedMatch) {
+          lastSpeed = speedMatch[1] + 'x';
+        }
+
+        // Extract size (e.g. size=   1024kB)
+        const sizeMatch = msg.match(/size=\s*(\d+)\s*kB/);
+        if (sizeMatch) {
+          lastSize = formatBytes(parseInt(sizeMatch[1]) * 1024);
+        } else {
+          const sizeMatch2 = msg.match(/size=\s*(\d+)([kKmM]?i?B)/);
+          if (sizeMatch2) {
+            lastSize = sizeMatch2[1] + ' ' + sizeMatch2[2];
+          }
+        }
+
+        // Update real-time stats in the UI
+        if (speedMatch || sizeMatch) {
+          setQueue(prev => prev.map(q => {
+            if (q.id === item.id && q.status === 'converting') {
+              return {
+                ...q,
+                speed: lastSpeed,
+                outputSize: lastSize
+              };
+            }
+            return q;
+          }));
+        }
       }, handleFFmpegProgress);
 
       updateLogs('Dosya tarayıcı belleğine yazılıyor...\n');
@@ -975,7 +1012,27 @@ export default function App() {
       updateLogs(`Komut yürütülüyor: ffmpeg ${args.join(' ')}\n`);
       const startTime = Date.now();
 
+      // Start elapsed time ticking
+      tickInterval = setInterval(() => {
+        const elapsedSec = (Date.now() - startTime) / 1000;
+        setQueue(prev => prev.map(q => {
+          if (q.id === item.id && q.status === 'converting') {
+            return {
+              ...q,
+              elapsedTime: formatDuration(elapsedSec)
+            };
+          }
+          return q;
+        }));
+      }, 1000);
+
       await ffmpeg.exec(args);
+
+      // Stop timer
+      if (tickInterval) {
+        clearInterval(tickInterval);
+        tickInterval = null;
+      }
 
       updateLogs('İşlem tamamlandı. Dosya sistemden alınıyor...\n');
       const data = await ffmpeg.readFile(outputName);
@@ -1053,6 +1110,10 @@ export default function App() {
         }
         return q;
       }));
+    } finally {
+      if (tickInterval) {
+        clearInterval(tickInterval);
+      }
     }
   };
 
