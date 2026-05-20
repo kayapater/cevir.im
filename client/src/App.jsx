@@ -1209,8 +1209,8 @@ export default function App() {
         <div className="brand">
           <Sparkles className="brand-icon" size={36} />
           <div>
-            <h1 className="brand-title glow-text-purple">ÇEVİRİCİ</h1>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Tarayıcıda Çalışan WASM Kodek Değiştirici</p>
+            <h1 className="brand-title glow-text-purple">KayaConvert</h1>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>developer: <span style={{ color: 'var(--accent-purple)', fontWeight: 'bold' }}>kayapater</span></p>
           </div>
         </div>
 
