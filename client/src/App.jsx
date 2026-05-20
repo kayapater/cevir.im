@@ -1247,7 +1247,7 @@ export default function App() {
             <div className="panel-header">
               <Layers size={18} style={{ color: 'var(--accent-purple)' }} />
               <div className="panel-title">
-                Format ve Kodek Ayarları 
+                Format ve Codec Ayarları 
                 {selectedQueueItemId && (
                   <span style={{ fontSize: '0.8rem', color: 'var(--accent-blue)', fontWeight: 'normal' }}>
                     (Seçili Dosya İçin)
@@ -1330,7 +1330,7 @@ export default function App() {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">Video Kodek</label>
+                    <label className="form-label">Video Codec</label>
                     <select 
                       className="select-input"
                       value={options.videoCodec}
@@ -1407,7 +1407,7 @@ export default function App() {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">Ses Kodek</label>
+                    <label className="form-label">Ses Codec</label>
                     <select 
                       className="select-input"
                       value={options.videoAudioCodec}
@@ -1449,7 +1449,7 @@ export default function App() {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">Ses Kodek / Sıkıştırma</label>
+                    <label className="form-label">Ses Codec / Sıkıştırma</label>
                     <select 
                       className="select-input"
                       value={options.audioCodec}
@@ -1800,7 +1800,7 @@ export default function App() {
                             <span className="stat-val">{item.outputSize}</span>
                           </div>
                           <div className="stat-box">
-                            <span className="stat-label">Kodek</span>
+                            <span className="stat-label">Codec</span>
                             <span className="stat-val" style={{ textTransform: 'uppercase' }}>
                               {item.options.videoCodec || item.options.audioCodec}
                             </span>

@@ -1,4 +1,4 @@
-# Çevirici - Tarayıcı Tabanlı Dosya ve Kodek Dönüştürücü
+# Cevir.im - Tarayıcı Tabanlı Dosya ve Codec Dönüştürücü
 
 Bu uygulama, video, ses, görsel ve belgelerinizi sunucuya yüklemeden **tamamen tarayıcı üzerinde (WebAssembly - FFmpeg WASM)** dönüştürmenize olanak tanıyan modern, güvenli ve yüksek performanslı bir dosya çeviricidir.
 
