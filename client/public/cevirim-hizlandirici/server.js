@@ -16,10 +16,13 @@ const port = 5000;
 app.use(cors());
 app.use(express.json());
 
-// Create default output folder in user's home directory
-const outputDir = path.join(os.homedir(), 'Cevirici_Ciktilari');
+// Default output directory is the user's Downloads folder
+let outputDir = path.join(os.homedir(), 'Downloads');
 if (!fs.existsSync(outputDir)) {
-  fs.mkdirSync(outputDir, { recursive: true });
+  outputDir = path.join(os.homedir(), 'Cevirici_Ciktilari');
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
 }
 
 // Hardware-accelerated GPU encoder auto-detection
