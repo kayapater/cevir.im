@@ -8,58 +8,72 @@ Write-Host "      Cevir.im Entegre Donanim Hizlandirici   " -ForegroundColor Gre
 Write-Host "===============================================" -ForegroundColor Cyan
 Write-Host ""
 
-# 1. Portable Node.js kontrolü
-if (-not (Test-Path $NodeDir)) {
-    Write-Host "[*] Node.js (Portatif) indiriliyor..." -ForegroundColor Yellow
-    
-    # We use Node v20.11.0 portable zip
-    $NodeUrl = "https://nodejs.org/dist/v20.11.0/node-v20.11.0-win-x64.zip"
-    
-    # Download
-    Invoke-WebRequest -Uri $NodeUrl -OutFile $NodeZip
-    
-    # Extract
-    Write-Host "[*] Node.js kuruluyor..." -ForegroundColor Yellow
-    Expand-Archive -Path $NodeZip -DestinationPath $AppDir
-    
-    # Rename extracted directory to node_portable
-    $ExtractedFolder = Join-Path $AppDir "node-v20.11.0-win-x64"
-    Rename-Item -Path $ExtractedFolder -NewName "node_portable"
-    
-    # Remove temp zip
-    Remove-Item $NodeZip -Force
-    Write-Host "[+] Node.js basariyla kuruldu." -ForegroundColor Green
+# Port 5000 kontrolü (Zaten çalışıyorsa tekrar başlatma)
+$portActive = Get-NetTCPConnection -LocalPort 5000 -ErrorAction SilentlyContinue
+if ($portActive) {
+    Write-Host "[+] Hizlandirici zaten arka planda aktif ve calisiyor!" -ForegroundColor Green
+    Write-Host "[i] Tarayicidan Cevir.im sitesine girerek kullanmaya baslayabilirsiniz." -ForegroundColor Cyan
+    Start-Sleep -Seconds 3
+    Exit
 }
 
-# Add node_portable to env PATH for this session only
-$env:PATH = "$NodeDir;" + $env:PATH
+# 1. Portable Node.js kontrolü ve kurulumu
+if (-not (Test-Path $NodeDir)) {
+    Write-Host "[*] Node.js (Portatif) indiriliyor..." -ForegroundColor Yellow
+    $NodeUrl = "https://nodejs.org/dist/v20.11.0/node-v20.11.0-win-x64.zip"
+    Invoke-WebRequest -Uri $NodeUrl -OutFile $NodeZip
+    
+    Write-Host "[*] Node.js kuruluyor..." -ForegroundColor Yellow
+    Expand-Archive -Path $NodeZip -DestinationPath $AppDir
+    Rename-Item -Path (Join-Path $AppDir "node-v20.11.0-win-x64") -NewName "node_portable"
+    Remove-Item $NodeZip -Force
+    Write-Host "[+] Node.js kuruldu." -ForegroundColor Green
+}
 
+# Env PATH'e ekle (Sadece bu oturum için)
+$env:PATH = "$NodeDir;" + $env:PATH
 $NodeBin = Join-Path $NodeDir "node.exe"
 $NpmBin = Join-Path $NodeDir "npm.cmd"
 
-# 2. Dependency kontrolü ve kurulumu
+# 2. Bağımlılıkların kontrolü ve kurulumu
 $NodeModules = Join-Path $AppDir "node_modules"
 if (-not (Test-Path $NodeModules)) {
     Write-Host "[*] Bilesenler ve FFmpeg Donanim Hizlandirici yukleniyor..." -ForegroundColor Yellow
     Write-Host "    (Bu islem baglantiniza bagli olarak 1-2 dakika surebilir)" -ForegroundColor Gray
     
-    # Run npm install using start-process to wait for it
     $installProc = Start-Process -FilePath $NpmBin -ArgumentList "install" -WorkingDirectory $AppDir -PassThru -NoNewWindow -Wait
-    
     if ($installProc.ExitCode -eq 0) {
-        Write-Host "[+] Bilesenler basariyla yuklendi." -ForegroundColor Green
+        Write-Host "[+] Bilesenler yuklendi." -ForegroundColor Green
     } else {
-        Write-Host "[-] Hata: Bilesenler yuklenirken hata olustu. Exit code: $($installProc.ExitCode)" -ForegroundColor Red
+        Write-Host "[-] Hata: Bilesenler yuklenemedi. Exit: $($installProc.ExitCode)" -ForegroundColor Red
         Exit 1
     }
 }
 
-# 3. Sunucuyu Başlatma
+# 3. Otomatik Başlangıca Ekleme (Windows Startup)
+try {
+    $StartupFolder = [System.Environment]::GetFolderPath('Startup')
+    $ShortcutPath = Join-Path $StartupFolder "CevirimHizlandirici.lnk"
+    if (-not (Test-Path $ShortcutPath)) {
+        Write-Host "[*] Hizlandirici Windows baslangicina ekleniyor..." -ForegroundColor Yellow
+        $WshShell = New-Object -ComObject WScript.Shell
+        $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
+        $Shortcut.TargetPath = Join-Path $AppDir "baslat.bat"
+        $Shortcut.WorkingDirectory = $AppDir
+        $Shortcut.WindowStyle = 7 # Minimized/Hidden
+        $Shortcut.Save()
+        Write-Host "[+] Baslangica eklendi! Bilgisayar her acildiginda otomatik calisacaktir." -ForegroundColor Green
+    }
+} catch {
+    Write-Host "[!] Uyarici: Otomatik baslangica eklenemedi (Yetki sorunu)." -ForegroundColor Yellow
+}
+
+# 4. Sunucuyu Arka Planda (Gizli Pencereyle) Başlatma
 Write-Host ""
-Write-Host "[+] Her sey hazir! Hizlandirici sunucusu baslatiliyor..." -ForegroundColor Green
-Write-Host "[i] Bu pencere acik kaldigi surece web sitesinde donanim hizlandirma aktif olacaktir." -ForegroundColor Cyan
-Write-Host "[i] Kapatmak icin bu pencereyi kapatabilir veya Ctrl+C tuslarina basabilirsiniz." -ForegroundColor Gray
+Write-Host "[+] Hizlandirici arka planda baslatiliyor..." -ForegroundColor Green
+Write-Host "[i] Sunucu artik gizli modda calisiyor. Bu pencereyi kapatabilirsiniz!" -ForegroundColor Cyan
 Write-Host ""
 
-# Run the node app directly in this console so logs are visible
-& $NodeBin "server.js"
+Start-Process -FilePath $NodeBin -ArgumentList "server.js" -WorkingDirectory $AppDir -WindowStyle Hidden
+
+Start-Sleep -Seconds 3

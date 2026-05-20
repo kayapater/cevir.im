@@ -35,6 +35,7 @@ const timeRegex = /time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})/;
 const speedRegex = /speed=\s*([\d.]+)x/;
 const sizeRegex = /size=\s*(\d+)kB/;
 
+// API Endpoints
 app.get('/api/status', (req, res) => {
   res.json({
     status: 'online',
@@ -69,19 +70,16 @@ app.post('/api/convert-native', upload.single('file'), (req, res) => {
   const options = JSON.parse(req.body.options || '{}');
   const jobId = Date.now().toString() + Math.random().toString(36).substring(2, 7);
   
-  // Clean original name to prevent directory traversal
   const originalBase = path.basename(file.originalname, path.extname(file.originalname));
   const cleanName = originalBase.replace(/[^a-zA-Z0-9_\-]/g, '_');
   const targetExt = options.format || 'mp4';
   const outFilename = `${cleanName}_converted_${Date.now()}.${targetExt}`;
   const outPath = path.join(outputDir, outFilename);
 
-  // Setup default ffmpeg arguments
   const args = ['-y', '-i', file.path];
 
   // Video settings
   if (options.type === 'video') {
-    // Video Codec
     if (options.videoCodec === 'copy') {
       args.push('-c:v', 'copy');
     } else if (options.videoCodec === 'h264') {
@@ -91,12 +89,11 @@ app.post('/api/convert-native', upload.single('file'), (req, res) => {
     } else if (options.videoCodec === 'vp9') {
       args.push('-c:v', 'libvpx-vp9', '-crf', '30', '-b:v', '0');
     } else if (options.videoCodec === 'prores') {
-      args.push('-c:v', 'prores_ks', '-profile:v', '3'); // ProRes 422 HQ
+      args.push('-c:v', 'prores_ks', '-profile:v', '3');
     } else if (options.videoCodec === 'none') {
       args.push('-vn');
     }
 
-    // Resolution
     if (options.resolution && options.resolution !== 'original') {
       const dimensions = options.resolution.split('x');
       if (dimensions.length === 2) {
@@ -104,12 +101,10 @@ app.post('/api/convert-native', upload.single('file'), (req, res) => {
       }
     }
 
-    // FPS
     if (options.fps && options.fps !== 'copy') {
       args.push('-r', options.fps);
     }
 
-    // Audio Codec
     if (options.audioCodec === 'copy') {
       args.push('-c:a', 'copy');
     } else if (options.audioCodec === 'aac') {
@@ -124,7 +119,6 @@ app.post('/api/convert-native', upload.single('file'), (req, res) => {
       args.push('-an');
     }
   } 
-  // Audio settings
   else if (options.type === 'audio') {
     if (options.audioCodec === 'mp3') {
       args.push('-c:a', 'libmp3lame', '-b:a', `${options.audioBitrate || 320}k`);
@@ -138,7 +132,6 @@ app.post('/api/convert-native', upload.single('file'), (req, res) => {
       args.push('-c:a', 'pcm_s16le');
     }
   } 
-  // Image settings
   else if (options.type === 'image') {
     if (targetExt === 'webp') {
       args.push('-quality', options.imageQuality || '90');
@@ -157,12 +150,10 @@ app.post('/api/convert-native', upload.single('file'), (req, res) => {
     }
   }
 
-  // Output path
   args.push(outPath);
 
-  console.log(`Job ${jobId} starting with command: ffmpeg ${args.join(' ')}`);
+  console.log(`[Hızlandırıcı] Job ${jobId} başlatılıyor: ffmpeg ${args.join(' ')}`);
 
-  // Initialize job object
   const job = {
     id: jobId,
     status: 'converting',
@@ -176,13 +167,11 @@ app.post('/api/convert-native', upload.single('file'), (req, res) => {
   };
   jobs.set(jobId, job);
 
-  // Spawn ffmpeg
   const ffmpeg = spawn(ffmpegPath, args);
 
   ffmpeg.stderr.on('data', (data) => {
     const text = data.toString();
     
-    // Parse duration once
     if (job.durationSec === 0) {
       const durMatch = text.match(durationRegex);
       if (durMatch) {
@@ -193,7 +182,6 @@ app.post('/api/convert-native', upload.single('file'), (req, res) => {
       }
     }
 
-    // Parse progress time
     const timeMatch = text.match(timeRegex);
     if (timeMatch && job.durationSec > 0) {
       const hours = parseInt(timeMatch[1]);
@@ -203,13 +191,11 @@ app.post('/api/convert-native', upload.single('file'), (req, res) => {
       job.progress = Math.min(99, Math.round((currentSec / job.durationSec) * 100));
     }
 
-    // Parse speed
     const speedMatch = text.match(speedRegex);
     if (speedMatch) {
       job.speed = speedMatch[1] + 'x';
     }
 
-    // Parse output size
     const sizeMatch = text.match(sizeRegex);
     if (sizeMatch) {
       const kb = parseInt(sizeMatch[1]);
@@ -218,21 +204,19 @@ app.post('/api/convert-native', upload.single('file'), (req, res) => {
   });
 
   ffmpeg.on('close', (code) => {
-    // Delete temporary uploaded input file
     fs.unlink(file.path, () => {});
 
     if (code === 0) {
       job.status = 'completed';
       job.progress = 100;
-      console.log(`Job ${jobId} completed successfully! Saved to ${outPath}`);
+      console.log(`[Hızlandırıcı] Job ${jobId} başarıyla tamamlandı. Çıktı: ${outPath}`);
     } else {
       job.status = 'error';
-      job.error = `FFmpeg exited with code ${code}`;
-      console.error(`Job ${jobId} failed with code ${code}`);
+      job.error = `FFmpeg çıkış kodu: ${code}`;
+      console.error(`[Hızlandırıcı] Job ${jobId} başarısız oldu (Kod: ${code})`);
     }
   });
 
-  // Respond immediately with the jobId so client can poll
   res.json({ jobId });
 });
 
@@ -240,7 +224,7 @@ app.get('/api/job-status', (req, res) => {
   const jobId = req.query.jobId;
   const job = jobs.get(jobId);
   if (!job) {
-    return res.status(404).json({ error: 'Job not found' });
+    return res.status(404).json({ error: 'Job bulunamadı' });
   }
   res.json(job);
 });
