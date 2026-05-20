@@ -1209,7 +1209,7 @@ export default function App() {
         <div className="brand">
           <Sparkles className="brand-icon" size={36} />
           <div>
-            <h1 className="brand-title glow-text-purple">KayaConvert</h1>
+            <h1 className="brand-title glow-text-purple">Cevir.im</h1>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>developer: <span style={{ color: 'var(--accent-purple)', fontWeight: 'bold' }}>kayapater</span></p>
           </div>
         </div>
@@ -1865,6 +1865,38 @@ export default function App() {
           </div>
         </div>
       )}
+      {/* Footer */}
+      <footer style={{ 
+        textAlign: 'center', 
+        marginTop: '3rem', 
+        paddingBottom: '2rem', 
+        color: 'var(--text-secondary)', 
+        fontSize: '0.85rem',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.5rem',
+        alignItems: 'center'
+      }}>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          <span>&copy; 2026 Cevir.im. Tüm hakları saklıdır.</span>
+          <span style={{ color: 'rgba(255,255,255,0.1)' }}>|</span>
+          <a 
+            href="/privacy" 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            style={{ 
+              color: 'var(--accent-purple)', 
+              textDecoration: 'none',
+              fontWeight: 500,
+              transition: 'color 0.2s'
+            }}
+            onMouseOver={e => e.target.style.color = 'var(--accent-blue)'}
+            onMouseOut={e => e.target.style.color = 'var(--accent-purple)'}
+          >
+            Gizlilik Politikası & Kullanım Koşulları
+          </a>
+        </div>
+      </footer>
     </div>
   );
 }
