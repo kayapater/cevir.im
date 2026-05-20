@@ -252,11 +252,31 @@ const getFFmpeg = async (onLog, onProgress) => {
   ffmpegInstance.on('progress', onProgress);
 
   if (!ffmpegInstance.loaded) {
+    const supportsMultithreading = typeof window.SharedArrayBuffer !== 'undefined';
+    
+    if (supportsMultithreading) {
+      try {
+        console.log('Loading multi-threaded FFmpeg Core...');
+        const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core-mt@0.12.10/dist/esm';
+        await ffmpegInstance.load({
+          coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+          wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+          workerURL: await toBlobURL(`${baseURL}/ffmpeg-core.worker.js`, 'text/javascript'),
+        });
+        console.log('Multi-threaded FFmpeg Core loaded successfully!');
+        return ffmpegInstance;
+      } catch (err) {
+        console.warn('Failed to load multi-threaded core, falling back to single-threaded core:', err);
+      }
+    }
+
+    console.log('Loading single-threaded FFmpeg Core...');
     const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm';
     await ffmpegInstance.load({
       coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
       wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
     });
+    console.log('Single-threaded FFmpeg Core loaded successfully!');
   }
   return ffmpegInstance;
 };
